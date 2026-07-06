@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Naxos — Carte interactive depuis Galini</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+<style>
+html, body { margin:0; height:100%; font-family: Arial, Helvetica, sans-serif; }
+body { padding-bottom:env(safe-area-inset-bottom); }
+#map { height:100vh; width:100vw; }
+
+.panel {
+  position:absolute;
+  z-index:1000;
+  top:14px;
+  left:14px;
+  width:340px;
+  max-width:calc(100vw - 28px);
+  background:rgba(255,255,255,.96);
+  backdrop-filter:blur(12px);
+  -webkit-backdrop-filter:blur(12px);
+  border-radius:18px;
+  box-shadow:0 8px 30px rgba(0,0,0,.20);
+  padding:16px;
+  font-size:14px;
+  box-sizing:border-box;
+}
+
+.panel h1 {
+  margin:0 0 8px;
+  font-size:18px;
+}
+
+label {
+  display:block;
+  margin-top:10px;
+  font-weight:bold;
+}
+
+select, button {
+  width:100%;
+  padding:10px;
+  margin-top:6px;
+  border-radius:10px;
+  border:1px solid #bbb;
+  font-size:15px;
+  box-sizing:border-box;
+}
+
+button {
+  background:#1f6feb;
+  color:white;
+  border:none;
+  font-weight:bold;
+  cursor:pointer;
+}
+
+button:hover {
+  background:#1557ba;
+}
+
+.info {
+  margin-top:10px;
+  padding:10px;
+  background:#f3f6ff;
+  border-radius:10px;
+  line-height:1.35;
+}
+
+.tag {
+  display:inline-block;
+  padding:3px 7px;
+  border-radius:999px;
+  background:#eef2ff;
+  margin:3px 3px 3px 0;
+}
+
+.spotIcon {
+  font-size:26px;
+  filter:drop-shadow(0 1px 3px #555);
+}
+
+.vehicleIcon {
+  font-size:30px;
+  filter:drop-shadow(0 2px 4px #444);
+}
+
+@media (max-width:768px) {
+  .panel {
+    top:auto;
+    bottom:calc(10px + env(safe-area-inset-bottom));
+    left:10px;
+    right:10px;
+    width:auto;
+    max-width:none;
+    max-height:42vh;
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+    border-radius:22px;
+    padding:18px;
+    font-size:14px;
+  }
+
+  .panel h1 {
+    font-size:18px;
+  }
+
+  select, button {
+    min-height:46px;
+    font-size:16px;
+  }
+}
+
+@media (max-width:390px) {
+  .panel {
+    max-height:48vh;
+    padding:16px;
+  }
+
+  .panel h1 {
+    font-size:17px;
+  }
+}
+</style>
+</head>
+
+<body>
+
+<div id="map"></div>
+
+<div class="panel">
+  <h1>🗺️ Naxos depuis Galini</h1>
+
+  <label>Mode de déplacement</label>
+  <select id="mode">
+    <option value="car">🚗 Voiture</option>
+    <option value="scooter">🛵 Scooter</option>
+  </select>
+
+  <label>Destination</label>
+  <select id="destination"></select>
+
+  <button id="goBtn">GO ►</button>
+
+  <div class="info" id="infoBox">
+    Choisis voiture ou scooter, puis une destination.
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+const start = {
+  name: "Palatiana Agriturismo — Galini",
+  lat: 37.1320,
+  lon: 25.4240
+};
+
+const places = [
+  {
+    name:"Chora / Port de Naxos",
+    lat:37.1036, lon:25.3767,
+    car:"10–15 min", scooter:"12–18 min",
+    category:"ville",
+    moment:"Soirée",
+    note:"Parfait pour dîner, se promener et sortir sans faire trop de route."
+  },
+  {
+    name:"Agios Prokopios",
+    lat:37.0747, lon:25.3497,
+    car:"18–22 min", scooter:"22–28 min",
+    category:"plage",
+    moment:"Matin ou fin d’après-midi",
+    note:"Très bonne plage, pratique, facile, avec tavernes."
+  },
+  {
+    name:"Agia Anna",
+    lat:37.0689, lon:25.3541,
+    car:"18–23 min", scooter:"22–28 min",
+    category:"plage",
+    moment:"Fin d’après-midi",
+    note:"Plus animée, sympa pour plage + dîner."
+  },
+  {
+    name:"Plaka Beach",
+    lat:37.0574, lon:25.3682,
+    car:"22–28 min", scooter:"25–35 min",
+    category:"plage",
+    moment:"Coucher de soleil",
+    note:"Très belle grande plage, excellent choix pour une demi-journée."
+  },
+  {
+    name:"Mikri Vigla",
+    lat:37.0254, lon:25.3722,
+    car:"28–35 min", scooter:"35–45 min",
+    category:"plage",
+    moment:"Matin",
+    note:"Très belle plage mais attention au vent, surtout en août."
+  },
+  {
+    name:"Alyko / Hawaii Beach",
+    lat:36.9960, lon:25.3940,
+    car:"35–45 min", scooter:"45–55 min",
+    category:"plage",
+    moment:"Matin",
+    note:"Plus sauvage. Mieux en voiture qu’en scooter."
+  },
+  {
+    name:"Temple de Déméter",
+    lat:37.0478, lon:25.4325,
+    car:"20–25 min", scooter:"25–30 min",
+    category:"site",
+    moment:"Matin",
+    note:"Très bon arrêt culturel, facile à combiner avec Sangri ou Halki."
+  },
+  {
+    name:"Halki / Chalki",
+    lat:37.0629, lon:25.4782,
+    car:"25–30 min", scooter:"30–40 min",
+    category:"village",
+    moment:"Matin ou fin d’après-midi",
+    note:"Très joli village intérieur. Route correcte mais plus agréable en voiture."
+  },
+  {
+    name:"Filoti",
+    lat:37.0527, lon:25.4984,
+    car:"30–35 min", scooter:"35–45 min",
+    category:"village",
+    moment:"Matin",
+    note:"Village de montagne, bon point de départ pour le Mont Zas."
+  },
+  {
+    name:"Apeiranthos",
+    lat:37.0712, lon:25.5208,
+    car:"40–50 min", scooter:"50–65 min",
+    category:"montagne",
+    moment:"Matinée ou demi-journée",
+    note:"Très beau mais route plus longue et sinueuse. Voiture recommandée."
+  },
+  {
+    name:"Apollonas",
+    lat:37.1781, lon:25.5539,
+    car:"45–60 min",
+    scooter:"60–75 min",
+    category:"nord",
+    moment:"Journée complète",
+    note:"Beau nord sauvage, mais trajet nettement plus confortable en voiture."
+  },
+  {
+    name:"Moutsouna",
+    lat:37.0773, lon:25.5847,
+    car:"55–70 min",
+    scooter:"70–90 min",
+    category:"est",
+    moment:"Journée complète",
+    note:"Côte est plus isolée. À faire seulement si vous voulez vraiment explorer."
+  }
+];
+
+const map = L.map("map").setView([38.2, 23.7], 6);
+
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 19,
+  attribution: "&copy; OpenStreetMap contributors"
+}).addTo(map);
+
+function getSpotEmoji(category) {
+  if (category === "plage") return "🏖️";
+  if (category === "ville") return "⚓";
+  if (category === "site") return "🏛️";
+  if (category === "village") return "🏘️";
+  if (category === "montagne") return "⛰️";
+  if (category === "nord") return "🌊";
+  if (category === "est") return "🛶";
+  return "📌";
+}
+
+function createSpotIcon(category) {
+  return L.divIcon({
+    className:"",
+    html:`<div class="spotIcon">${getSpotEmoji(category)}</div>`,
+    iconSize:[30,30],
+    iconAnchor:[15,26]
+  });
+}
+
+function createVehicleIcon(mode) {
+  return L.divIcon({
+    className:"",
+    html:`<div class="vehicleIcon">${mode === "car" ? "🚗" : "🛵"}</div>`,
+    iconSize:[34,34],
+    iconAnchor:[17,17]
+  });
+}
+
+const startIcon = L.divIcon({
+  className:"",
+  html:"<div style='font-size:36px;filter:drop-shadow(0 2px 4px #444)'>📍</div>",
+  iconSize:[36,36],
+  iconAnchor:[18,36]
+});
+
+L.marker([start.lat, start.lon], {icon:startIcon})
+  .addTo(map)
+  .bindPopup("<b>Palatiana Agriturismo — Galini</b><br>Point de départ corrigé.");
+
+const routeLayers = [];
+const markerLayers = [];
+let vehicleMarker = null;
+let animationTimer = null;
+
+function getColor(place, mode) {
+  if (mode === "car") return "#1f6feb";
+  if (place.category === "montagne" || place.category === "nord" || place.category === "est") return "#b8b8b8";
+  return "#f28c28";
+}
+
+function getOpacity(place, mode) {
+  if (mode === "scooter" && ["montagne","nord","est"].includes(place.category)) return 0.18;
+  return 0.38;
+}
+
+function clearVehicleAnimation() {
+  if (animationTimer) {
+    clearInterval(animationTimer);
+    animationTimer = null;
+  }
+
+  if (vehicleMarker) {
+    map.removeLayer(vehicleMarker);
+    vehicleMarker = null;
+  }
+}
+
+function animateVehicle(place, mode) {
+  clearVehicleAnimation();
+
+  const steps = 90;
+  let currentStep = 0;
+
+  vehicleMarker = L.marker([start.lat, start.lon], {
+    icon:createVehicleIcon(mode),
+    interactive:false
+  }).addTo(map);
+
+  animationTimer = setInterval(() => {
+    currentStep++;
+
+    const progress = currentStep / steps;
+    const lat = start.lat + (place.lat - start.lat) * progress;
+    const lon = start.lon + (place.lon - start.lon) * progress;
+
+    vehicleMarker.setLatLng([lat, lon]);
+
+    if (currentStep >= steps) {
+      clearInterval(animationTimer);
+      animationTimer = null;
+    }
+  }, 28);
+}
+
+function refreshMap() {
+  const mode = document.getElementById("mode").value;
+
+  routeLayers.forEach(l => map.removeLayer(l));
+  markerLayers.forEach(l => map.removeLayer(l));
+  routeLayers.length = 0;
+  markerLayers.length = 0;
+
+  clearVehicleAnimation();
+
+  places.forEach(place => {
+    const color = getColor(place, mode);
+    const opacity = getOpacity(place, mode);
+    const time = mode === "car" ? place.car : place.scooter;
+    const vehicle = mode === "car" ? "🚗 Voiture" : "🛵 Scooter";
+    const icon = getSpotEmoji(place.category);
+
+    const route = L.polyline(
+      [[start.lat,start.lon],[place.lat,place.lon]],
+      {
+        color,
+        weight:3,
+        opacity,
+        dashArray:"6,10"
+      }
+    ).addTo(map);
+
+    const marker = L.marker([place.lat, place.lon], {icon:createSpotIcon(place.category)})
+      .addTo(map)
+      .bindPopup(`
+        <b>${icon} ${place.name}</b><br>
+        ${vehicle} : <b>${time}</b><br>
+        <span class="tag">${place.category}</span>
+        <span class="tag">${place.moment}</span><br>
+        ${place.note}
+      `);
+
+    routeLayers.push(route);
+    markerLayers.push(marker);
+  });
+
+  updateInfo();
+}
+
+function updateInfo() {
+  const mode = document.getElementById("mode").value;
+  const index = document.getElementById("destination").value;
+  const place = places[index];
+
+  const time = mode === "car" ? place.car : place.scooter;
+  const vehicle = mode === "car" ? "🚗 Voiture" : "🛵 Scooter";
+  const icon = getSpotEmoji(place.category);
+
+  let advice = "";
+
+  if (mode === "scooter" && ["montagne","nord","est"].includes(place.category)) {
+    advice = "<br><b>Conseil :</b> faisable, mais pas idéal. Route plus longue/sinueuse : voiture préférable.";
+  } else if (mode === "scooter") {
+    advice = "<br><b>Conseil :</b> bon choix en scooter si vous êtes à l’aise.";
+  } else {
+    advice = "<br><b>Conseil :</b> voiture très confortable depuis Galini.";
+  }
+
+  document.getElementById("infoBox").innerHTML = `
+    <b>${icon} ${place.name}</b><br>
+    ${vehicle} : <b>${time}</b><br>
+    Meilleur moment : <b>${place.moment}</b><br>
+    ${place.note}
+    ${advice}
+  `;
+}
+
+const destinationSelect = document.getElementById("destination");
+places.forEach((p, i) => {
+  const option = document.createElement("option");
+  option.value = i;
+  option.textContent = `${getSpotEmoji(p.category)} ${p.name}`;
+  destinationSelect.appendChild(option);
+});
+
+document.getElementById("mode").addEventListener("change", refreshMap);
+document.getElementById("destination").addEventListener("change", updateInfo);
+
+document.getElementById("goBtn").addEventListener("click", () => {
+  const mode = document.getElementById("mode").value;
+  const index = document.getElementById("destination").value;
+  const place = places[index];
+
+  map.flyTo([place.lat, place.lon], 14, {
+    animate:true,
+    duration:2.4
+  });
+
+  animateVehicle(place, mode);
+
+  setTimeout(() => {
+    markerLayers[index].openPopup();
+  }, 2400);
+});
+
+refreshMap();
+
+setTimeout(() => {
+  map.flyTo([37.10, 25.44], 11, {
+    animate:true,
+    duration:4
+  });
+}, 700);
+</script>
+
+</body>
+</html>
